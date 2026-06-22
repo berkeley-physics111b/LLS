@@ -1029,7 +1029,7 @@ class SR760:
         return freq, amp
 
 if __name__ == "__main__":
-    with SR760 as dev:
+    with SR760(port='COM3') as dev:
         print(dev.identify())
         print("Getting spectrum")
         dev.setup_spectrum(1000, 500)
