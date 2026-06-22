@@ -25,6 +25,7 @@ Usage example:
 
 import serial
 import time
+import matplotlib.pyplot as plt
 from typing import Optional
 
 
@@ -1026,3 +1027,14 @@ class SR760:
         freq = self.get_marker_x(trace)
         amp = self.get_marker_y(trace)
         return freq, amp
+
+if __name__ == "__main__":
+    with SR760 as dev:
+        print(dev.identify())
+        print("Getting spectrum")
+        dev.setup_spectrum(1000, 500)
+        freqs, amps = dev.acquire_spectrum()
+        plt.plot(freqs, amps)
+        plt.xlabel("Frequencies")
+        plt.ylabel("Amplitudes")
+        plt.show()
