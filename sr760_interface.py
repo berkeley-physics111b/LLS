@@ -1030,6 +1030,7 @@ class SR760:
 
 if __name__ == "__main__":
     with SR760(port='COM3') as dev:
+        dev.configure_rs232()
         print(dev.identify())
         print("Getting spectrum")
         dev.setup_spectrum(1000, 500)
