@@ -1,30 +1,32 @@
 """
-SR830 DSP Lock-In Amplifier - RS232/Serial Interface
-=====================================================
+SR830 DSP Lock-In Amplifier - GPIB (PyVISA) Interface
+=======================================================
 Based on the Stanford Research Systems SR830 User's Manual (Rev 2.5, 10/2011).
 
-RS232 Configuration (from manual §5, Remote Programming):
-  - The SR830 operates as a DCE device: transmit on pin 3, receive on pin 2
-  - Supports CTS/DTR hardware handshaking (CTS=pin 5 output, DTR=pin 20 input)
-  - Simple 3-wire mode (pins 2, 3, 7) also supported
-  - Word length is always 8 bits; baud rate and parity set via [Setup] key
-  - Supported baud rates: 300-19200; parity: Even, Odd, or None
-  - Command terminator: <LF> or <CR>; responses terminated by <CR> on RS232
+GPIB Configuration (from manual §5, Remote Programming):
+  - The SR830 listens for commands on GPIB and RS232 simultaneously but
+    responds only on the interface selected with OUTX (0=RS232, 1=GPIB).
+  - Command terminator: <LF> or <CR> are accepted on input; the instrument's
+    configured GPIB terminator (set via the front-panel [Setup] menu, e.g.
+    LF, CR+LF, or EOI only) governs what it sends back. This module defaults
+    write_termination to '\\n' and read_termination to '\\r\\n', matching the
+    factory-default GPIB terminator setting - adjust these if your unit is
+    configured differently.
   - 256-character input and output buffers
 
-Important: send OUTX 0 as the very first command to direct responses to RS232.
+Important: send OUTX 1 as the very first command to direct responses to GPIB.
 
 Usage example:
-    from sr830 import SR830
-    with SR830('/dev/ttyUSB0') as lia:
+    from sr830_interface import SR830
+    with SR830(gpib_address=8) as lia:
         print(lia.identify())
-        lia.set_output_interface('rs232')
+        lia.configure_gpib()
         lia.set_frequency(1000.0)
         x, y = lia.get_xy()
 """
 
-import serial
 import time
+import pyvisa
 from typing import Optional
 
 
@@ -71,73 +73,71 @@ class SR830Error(Exception):
 
 class SR830:
     """
-    Serial interface for the Stanford Research Systems SR830 DSP Lock-In Amplifier.
+    GPIB (PyVISA) interface for the Stanford Research Systems SR830 DSP
+    Lock-In Amplifier.
 
-    The SR830 speaks ASCII commands terminated by LF or CR. Responses are
-    ASCII strings terminated by CR on RS232. All set/query commands use the
+    The SR830 speaks ASCII commands. All set/query commands use the
     4-character mnemonic format described in Chapter 5 of the manual.
 
     The instrument can only output data on one interface at a time (RS232 or
-    GPIB). The OUTX 0 command must be the first command sent to direct all
-    query responses to RS232.
+    GPIB). The OUTX 1 command must be the first command sent to direct all
+    query responses to GPIB.
     """
 
     MAX_BUFFER_POINTS = 16383   # Maximum data storage buffer size (manual §5)
 
     def __init__(
         self,
-        port: str,
-        baudrate: int = 9600,
-        parity: str = serial.PARITY_NONE,
+        resource_name: Optional[str] = None,
+        gpib_address: Optional[int] = None,
+        board: int = 0,
         timeout: float = 5.0,
-        write_timeout: float = 5.0,
-        rtscts: bool = False,
-        dsrdtr: bool = False,
+        write_termination: str = '\n',
+        read_termination: str = '\r\n',
+        resource_manager: Optional["pyvisa.ResourceManager"] = None,
     ):
         """
-        Open the serial port connected to the SR830.
+        Open a GPIB connection to the SR830 via PyVISA.
 
         Parameters
         ----------
-        port : str
-            Serial port name, e.g. '/dev/ttyUSB0' or 'COM3'.
-        baudrate : int
-            Must match the baud rate set via the SR830 [Setup] key.
-            Supported: 300, 600, 1200, 2400, 4800, 9600, 19200. Default 9600.
-        parity : str
-            serial.PARITY_NONE, serial.PARITY_EVEN, or serial.PARITY_ODD.
-            Must match the parity set via the SR830 [Setup] key.
+        resource_name : str, optional
+            Full VISA resource string, e.g. 'GPIB0::8::INSTR'. If given,
+            gpib_address/board are ignored.
+        gpib_address : int, optional
+            GPIB primary address (0-30) of the SR830. Used to build
+            'GPIB<board>::<gpib_address>::INSTR' when resource_name is not
+            supplied. Either resource_name or gpib_address is required.
+        board : int
+            GPIB interface board/controller index. Default 0.
         timeout : float
-            Read timeout in seconds.
-        write_timeout : float
-            Write timeout in seconds.
-        rtscts : bool
-            Enable RTS/CTS hardware flow control. The SR830 supports CTS/DTR
-            handshaking (CTS=pin 5 output, DTR=pin 20 input). Set True only
-            if your cable is wired for it.
-        dsrdtr : bool
-            Enable DSR/DTR hardware flow control.
+            VISA I/O timeout in seconds.
+        write_termination : str
+            Terminator appended to outgoing commands. Default '\\n'.
+        read_termination : str
+            Terminator PyVISA looks for at the end of a response. Must match
+            the GPIB terminator configured on the SR830 (front-panel
+            [Setup] menu). Default '\\r\\n'.
+        resource_manager : pyvisa.ResourceManager, optional
+            Reuse an existing ResourceManager instead of creating a new one
+            (useful when talking to several instruments in one program).
         """
-        self._port_name = port
-        self._serial = serial.Serial(
-            port=port,
-            baudrate=baudrate,
-            bytesize=serial.EIGHTBITS,   # Always 8 bits on SR830 (manual §5)
-            parity=parity,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=timeout,
-            write_timeout=write_timeout,
-            rtscts=rtscts,
-            dsrdtr=dsrdtr,
-        )
+        if resource_name is None:
+            if gpib_address is None:
+                raise ValueError("Provide either resource_name or gpib_address")
+            resource_name = f'GPIB{board}::{gpib_address}::INSTR'
+        self._resource_name = resource_name
+        self._rm = resource_manager or pyvisa.ResourceManager()
+        self._inst = self._rm.open_resource(resource_name)
+        self._inst.timeout = timeout * 1000  # PyVISA timeout is in ms
+        self._inst.write_termination = write_termination
+        self._inst.read_termination = read_termination
 
     # ------------------------------------------------------------------
     # Context manager
     # ------------------------------------------------------------------
 
     def __enter__(self):
-        if not self._serial.is_open:
-            self._serial.open()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -145,31 +145,34 @@ class SR830:
         return False
 
     def close(self):
-        """Close the serial port."""
-        if self._serial.is_open:
-            self._serial.close()
+        """Close the GPIB (VISA) session."""
+        self._inst.close()
 
     # ------------------------------------------------------------------
     # Low-level I/O
     # ------------------------------------------------------------------
 
     def _send(self, command: str):
-        """Send a command string, appending a LF terminator."""
-        raw = (command.strip() + '\n').encode('ascii')
-        self._serial.write(raw)
+        """Send a command string over GPIB."""
+        self._inst.write(command.strip())
 
     def _readline(self) -> str:
         """
-        Read one CR-terminated response line from the SR830.
-        Returns the decoded string with trailing whitespace stripped.
+        Read one response from the SR830.
+        Returns the decoded string with surrounding whitespace stripped.
         Raises SR830Error on timeout.
         """
-        line = self._serial.readline()
+        try:
+            line = self._inst.read()
+        except pyvisa.errors.VisaIOError as exc:
+            raise SR830Error(
+                f"Timeout waiting for response from SR830 on {self._resource_name}"
+            ) from exc
         if not line:
             raise SR830Error(
-                f"Timeout waiting for response from SR830 on {self._port_name}"
+                f"Timeout waiting for response from SR830 on {self._resource_name}"
             )
-        return line.decode('ascii', errors='replace').strip()
+        return line.strip()
 
     def write(self, command: str):
         """Send a command that expects no response."""
@@ -192,18 +195,18 @@ class SR830:
     # Interface / setup
     # ------------------------------------------------------------------
 
-    def set_output_interface(self, interface: str = 'rs232'):
+    def set_output_interface(self, interface: str = 'gpib'):
         """
         OUTX - Direct response output to RS232 or GPIB.
 
-        This must be the first command sent when connecting over RS232.
+        This must be the first command sent when connecting over GPIB.
         The SR830 receives commands on both interfaces but responds only
         on the selected one (manual §5, Setup Commands).
 
         Parameters
         ----------
         interface : str
-            'rs232' (i=0) or 'gpib' (i=1).
+            'gpib' (i=1, default) or 'rs232' (i=0).
         """
         val = 0 if interface.lower() == 'rs232' else 1
         self.write(f'OUTX {val}')
@@ -934,10 +937,9 @@ class SR830:
         """
         TRCB? - Read stored data in IEEE 754 binary float format (4 bytes/point).
 
-        Faster than TRCA? for large datasets. The manual notes that binary
-        transfer over RS232 is generally not recommended due to timing
-        constraints, but is provided here for completeness. Use on RS232 only
-        if your serial driver reliably handles raw binary (no CR/LF stripping).
+        Faster than TRCA? for large datasets. Binary transfer over GPIB is
+        the recommended method for large buffers (unlike RS232, where the
+        manual cautions against it due to timing constraints).
 
         Parameters
         ----------
@@ -958,7 +960,12 @@ class SR830:
             raise ValueError(f"Channel must be 1 or 2, got {channel}")
         self._send(f'TRCB? {channel},{start_bin},{count}')
         num_bytes = count * 4
-        raw = self._serial.read(num_bytes)
+        try:
+            raw = self._inst.read_bytes(num_bytes)
+        except pyvisa.errors.VisaIOError as exc:
+            raise SR830Error(
+                f"Timeout waiting for TRCB? response from SR830 on {self._resource_name}"
+            ) from exc
         if len(raw) != num_bytes:
             raise SR830Error(
                 f"TRCB? expected {num_bytes} bytes, got {len(raw)}"
@@ -1161,12 +1168,12 @@ class SR830:
     # High-level convenience methods
     # ------------------------------------------------------------------
 
-    def configure_rs232(self):
+    def configure_gpib(self):
         """
-        Send OUTX 0 to direct all query responses to RS232.
-        This should be the very first command sent after opening the port.
+        Send OUTX 1 to direct all query responses to GPIB.
+        This should be the very first command sent after opening the session.
         """
-        self.set_output_interface('rs232')
+        self.set_output_interface('gpib')
 
     def setup_lockin(
         self,
@@ -1207,7 +1214,7 @@ class SR830:
         phase_degrees : float
             Reference phase shift in degrees (default 0.0).
         """
-        self.configure_rs232()
+        self.configure_gpib()
         self.set_reference_source(reference_source)
         if frequency_hz is not None:
             self.set_frequency(frequency_hz)

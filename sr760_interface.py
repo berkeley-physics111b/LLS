@@ -1,30 +1,34 @@
 """
-SR760 FFT Spectrum Analyzer - RS232/Serial Interface
-=====================================================
+SR760 FFT Spectrum Analyzer - GPIB (PyVISA) Interface
+=======================================================
 Based on the Stanford Research Systems SR760 User's Manual (Rev 1.9, 03/2018).
 
-RS232 Configuration (from manual §5, Setup Communications):
-  - The SR760 operates as a DCE device: transmit on pin 3, receive on pin 2
-  - Supports CTS/DTR hardware handshaking (CTS=pin 5 output, DTR=pin 20 input)
-  - Simple 3-wire mode (pins 2, 3, 7) also supported if handshaking is ignored
-  - Default baud: 9600, 8 data bits, no parity
-  - Command terminator: <CR> or <LF>
-  - Responses terminated with <CR> on RS232
+GPIB Configuration (from manual §5, Setup Communications):
+  - The SR760 listens for commands on GPIB and RS232 simultaneously but
+    responds only on the interface selected with OUTP (0=RS232, 1=GPIB).
+  - Command terminator: <CR> or <LF> are accepted, but on GPIB the SR760's
+    end of a response is marked purely by asserting EOI on the last byte
+    ("EOC" in the manual) - it does NOT append a CR/LF character to GPIB
+    responses. Because of this, PyVISA must not append its own write
+    terminator either, or the extra bytes will be interpreted as a new
+    (empty) command. Both write_termination and read_termination are
+    therefore set to '' for this instrument; message boundaries are
+    handled entirely by the GPIB EOI line.
   - 256-character input and output buffers
 
-Important: Use OUTP 0 at the start of every program to direct responses to RS232.
+Important: Use OUTP 1 at the start of every program to direct responses to GPIB.
 
 Usage example:
-    from sr760 import SR760
-    with SR760('/dev/ttyUSB0') as sa:
+    from sr760_interface import SR760
+    with SR760(gpib_address=4) as sa:
         print(sa.identify())
-        sa.set_output_interface('rs232')
+        sa.configure_gpib()
         sa.start()
         freqs, amplitudes = sa.get_spectrum(trace=0)
 """
 
-import serial
 import time
+import pyvisa
 import matplotlib.pyplot as plt
 from typing import Optional
 
@@ -65,11 +69,15 @@ class SR760Error(Exception):
 
 class SR760:
     """
-    Serial interface for the Stanford Research Systems SR760 FFT Spectrum Analyzer.
+    GPIB (PyVISA) interface for the Stanford Research Systems SR760 FFT
+    Spectrum Analyzer.
 
-    The SR760 speaks ASCII commands terminated by CR or LF.  Responses are
-    ASCII strings terminated by CR (on RS232).  All set/query commands use the
-    4-character mnemonic format described in the manual.
+    The SR760 speaks ASCII commands.  All set/query commands use the
+    4-character mnemonic format described in the manual.  On GPIB, the end
+    of a response is marked only by the EOI line being asserted on the last
+    byte (the manual's "EOC") - the instrument does not append a CR/LF to
+    GPIB responses, so both write_termination and read_termination are set
+    to '' and message boundaries are left entirely to GPIB EOI handling.
     """
 
     NUM_BINS = 400          # Normal spectrum: 400 bins (0-399)
@@ -78,63 +86,53 @@ class SR760:
 
     def __init__(
         self,
-        port: str,
-        baudrate: int = 9600,
-        bytesize: int = serial.EIGHTBITS,
-        parity: str = serial.PARITY_NONE,
-        stopbits: float = serial.STOPBITS_ONE,
+        resource_name: Optional[str] = None,
+        gpib_address: Optional[int] = None,
+        board: int = 0,
         timeout: float = 5.0,
-        write_timeout: float = 5.0,
-        rtscts: bool = False,
-        dsrdtr: bool = False,
+        resource_manager: Optional["pyvisa.ResourceManager"] = None,
     ):
         """
-        Open the serial port connected to the SR760.
+        Open a GPIB connection to the SR760 via PyVISA.
 
         Parameters
         ----------
-        port : str
-            Serial port name, e.g. '/dev/ttyUSB0' or 'COM3'.
-        baudrate : int
-            Must match the baud rate set in the SR760 Setup RS232 menu.
-            Allowed values on the SR760: 300, 1200, 2400, 4800, 9600. Default 9600.
-        bytesize : int
-            Data bits.  SR760 default is 8.
-        parity : str
-            Parity.  SR760 default is None.
-        stopbits : float
-            Stop bits.  SR760 default is 1.
+        resource_name : str, optional
+            Full VISA resource string, e.g. 'GPIB0::4::INSTR'. If given,
+            gpib_address/board are ignored.
+        gpib_address : int, optional
+            GPIB primary address (0-30) of the SR760. Used to build
+            'GPIB<board>::<gpib_address>::INSTR' when resource_name is not
+            supplied. Either resource_name or gpib_address is required.
+        board : int
+            GPIB interface board/controller index. Default 0.
         timeout : float
-            Read timeout in seconds.
-        write_timeout : float
-            Write timeout in seconds.
-        rtscts : bool
-            Enable RTS/CTS hardware flow control.  The SR760 supports CTS/DTR
-            handshaking (CTS=pin 5 output, DTR=pin 20 input).  Set True only
-            if your cable is wired for it.
-        dsrdtr : bool
-            Enable DSR/DTR hardware flow control.
+            VISA I/O timeout in seconds.
+        resource_manager : pyvisa.ResourceManager, optional
+            Reuse an existing ResourceManager instead of creating a new one
+            (useful when talking to several instruments in one program).
         """
-        self._port_name = port
-        self._serial = serial.Serial(
-            port=port,
-            baudrate=baudrate,
-            bytesize=bytesize,
-            parity=parity,
-            stopbits=stopbits,
-            timeout=timeout,
-            write_timeout=write_timeout,
-            rtscts=rtscts,
-            dsrdtr=dsrdtr,
-        )
+        if resource_name is None:
+            if gpib_address is None:
+                raise ValueError("Provide either resource_name or gpib_address")
+            resource_name = f'GPIB{board}::{gpib_address}::INSTR'
+        self._resource_name = resource_name
+        self._rm = resource_manager or pyvisa.ResourceManager()
+        self._inst = self._rm.open_resource(resource_name)
+        self._inst.timeout = timeout * 1000  # PyVISA timeout is in ms
+
+        # The SR760 marks the end of a GPIB response only with EOI (the
+        # manual's "EOC") - no trailing CR/LF is sent.  Do not let PyVISA
+        # append its own write terminator either, or the instrument will
+        # see it as part of / a follow-on to the command.
+        self._inst.write_termination = ''
+        self._inst.read_termination = ''
 
     # ------------------------------------------------------------------
     # Context manager
     # ------------------------------------------------------------------
 
     def __enter__(self):
-        if not self._serial.is_open:
-            self._serial.open()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -142,31 +140,34 @@ class SR760:
         return False
 
     def close(self):
-        """Close the serial port."""
-        if self._serial.is_open:
-            self._serial.close()
+        """Close the GPIB (VISA) session."""
+        self._inst.close()
 
     # ------------------------------------------------------------------
     # Low-level I/O
     # ------------------------------------------------------------------
 
     def _send(self, command: str):
-        """Send a command string, appending a CR terminator."""
-        raw = (command.strip() + '\r').encode('ascii')
-        self._serial.write(raw)
+        """Send a command string over GPIB (EOI marks the end of message)."""
+        self._inst.write(command.strip())
 
     def _readline(self) -> str:
         """
-        Read one CR-terminated response line from the SR760.
-        Returns the decoded string with trailing whitespace stripped.
-        Raises SR760Error on timeout (empty response).
+        Read one EOI-terminated response from the SR760.
+        Returns the decoded string with surrounding whitespace stripped.
+        Raises SR760Error on timeout.
         """
-        line = self._serial.readline()
+        try:
+            line = self._inst.read()
+        except pyvisa.errors.VisaIOError as exc:
+            raise SR760Error(
+                f"Timeout waiting for response from SR760 on {self._resource_name}"
+            ) from exc
         if not line:
             raise SR760Error(
-                f"Timeout waiting for response from SR760 on {self._port_name}"
+                f"Timeout waiting for response from SR760 on {self._resource_name}"
             )
-        return line.decode('ascii', errors='replace').strip()
+        return line.strip()
 
     def write(self, command: str):
         """Send a command that expects no response."""
@@ -189,19 +190,19 @@ class SR760:
     # Interface / setup
     # ------------------------------------------------------------------
 
-    def set_output_interface(self, interface: str = 'rs232'):
+    def set_output_interface(self, interface: str = 'gpib'):
         """
         OUTP command - direct response output to RS232 or GPIB.
 
         Parameters
         ----------
         interface : str
-            'rs232' (default) or 'gpib'.
+            'gpib' (default) or 'rs232'.
 
         Notes
         -----
         Call this at the start of every program to ensure responses come
-        back on RS232 (OUTP 0).  The SR760 receives commands on both
+        back on GPIB (OUTP 1).  The SR760 receives commands on both
         interfaces simultaneously but responds only on the selected one.
         """
         val = 0 if interface.lower() == 'rs232' else 1
@@ -824,10 +825,11 @@ class SR760:
         Transfer the entire spectrum in ASCII format using SPEC?.
 
         Reads all 400 bins individually (one query per bin).  This is the
-        safe method for RS232 as it uses simple ASCII handshaking.
+        safe method as it uses simple ASCII query/response with no binary
+        transfer involved.
 
-        For faster transfer over RS232, use get_spectrum_fast() which reads
-        all 400 comma-separated values from a single SPEC? query.
+        For faster transfer, use get_spectrum_fast() which reads all 400
+        comma-separated values from a single SPEC? query.
 
         Parameters
         ----------
@@ -916,12 +918,12 @@ class SR760:
     # High-level convenience methods
     # ------------------------------------------------------------------
 
-    def configure_rs232(self):
+    def configure_gpib(self):
         """
-        Convenience: send OUTP 0 to direct all responses to RS232.
-        Should be the very first command sent over RS232.
+        Convenience: send OUTP 1 to direct all responses to GPIB.
+        Should be the very first command sent over GPIB.
         """
-        self.set_output_interface('rs232')
+        self.set_output_interface('gpib')
 
     def setup_spectrum(
         self,
@@ -953,7 +955,7 @@ class SR760:
         trace : int
             Which trace to configure: 0 or 1.
         """
-        self.configure_rs232()
+        self.configure_gpib()
         self.set_measurement(trace, 0)      # Spectrum
         self.set_display(trace, display)
         self.set_units(trace, units)
@@ -1029,8 +1031,8 @@ class SR760:
         return freq, amp
 
 if __name__ == "__main__":
-    with SR760(port='COM3') as dev:
-        dev.configure_rs232()
+    with SR760(gpib_address=8) as dev:
+        dev.configure_gpib()
         print(dev.identify())
         print("Getting spectrum")
         dev.setup_spectrum(1000, 500)
