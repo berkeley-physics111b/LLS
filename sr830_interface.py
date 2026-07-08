@@ -376,8 +376,8 @@ class SR830:
         """
         HARM - Set the detection harmonic.
 
-        Range: 1 ≤ n ≤ 19999, subject to n×f ≤ 102 kHz.
-        If n×f > 102 kHz, the SR830 sets n to the largest valid value.
+        Range: 1 ≤ n ≤ 19999, subject to n*f ≤ 102 kHz.
+        If n*f > 102 kHz, the SR830 sets n to the largest valid value.
         """
         if not 1 <= n <= 19999:
             raise ValueError(f"Harmonic must be 1-19999, got {n}")
@@ -462,7 +462,7 @@ class SR830:
         mode : int
             0 = Out (no filters)
             1 = Line notch in (60 Hz / 50 Hz)
-            2 = 2×Line notch in (120 Hz / 100 Hz)
+            2 = 2 * Line notch in (120 Hz / 100 Hz)
             3 = Both notch filters in
         """
         self.write(f'ILIN {mode}')

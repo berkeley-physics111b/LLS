@@ -412,7 +412,7 @@ class SR760Tab(ttk.Frame):
             if p["averaging"]:
                 dev.wait_for_ready_average(timeout=120.0)
             else:
-                dev.wait_for_ready(timeout=120.0)
+                dev.wait_for_ready(timeout=150.0)
             self._set_settle("Settled")
 
             self._set_status("Downloading spectrum...")

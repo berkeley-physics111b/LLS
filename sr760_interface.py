@@ -347,7 +347,8 @@ class SR760:
             if self.is_interface_ready():
                 return
             time.sleep(poll_interval)
-        raise SR760Error("Timed out waiting for SR760 Interface Ready bit")
+        err = str(self.get_error_status())
+        raise SR760Error(f"Timed out waiting for SR760 Interface Ready bit, error bits: {err}")
     
     def wait_for_ready_average(self, timeout: float = 30.0, poll_interval: float = 0.25):
         """
