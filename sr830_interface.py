@@ -92,8 +92,8 @@ class SR830:
         gpib_address: Optional[int] = None,
         board: int = 0,
         timeout: float = 5.0,
-        write_termination: str = '\n',
-        read_termination: str = '\r\n',
+        write_termination: str = '',
+        read_termination: str = '\n',
         resource_manager: Optional["pyvisa.ResourceManager"] = None,
     ):
         """
@@ -130,8 +130,12 @@ class SR830:
         self._rm = resource_manager or pyvisa.ResourceManager()
         self._inst = self._rm.open_resource(resource_name)
         self._inst.timeout = timeout * 1000  # PyVISA timeout is in ms
+
         self._inst.write_termination = write_termination
         self._inst.read_termination = read_termination
+
+        # Clear queue in case unfinished commands from last session, etc.
+        self._inst.clear()
 
     # ------------------------------------------------------------------
     # Context manager

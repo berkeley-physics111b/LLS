@@ -121,12 +121,14 @@ class SR760:
         self._inst = self._rm.open_resource(resource_name)
         self._inst.timeout = timeout * 1000  # PyVISA timeout is in ms
 
-        # The SR760 marks the end of a GPIB response only with EOI (the
-        # manual's "EOC") - no trailing CR/LF is sent.  Do not let PyVISA
-        # append its own write terminator either, or the instrument will
-        # see it as part of / a follow-on to the command.
+        # The SR760 sees the end of a GPIB message only with EOI (the
+        # manual's "EOC") - no CR/LF should be used. Responses terminated
+        # with LF. (This is for GPIB.)
         self._inst.write_termination = ''
-        self._inst.read_termination = ''
+        self._inst.read_termination = '\n'
+
+        # Clear queue in case unfinished commands from last session, etc.
+        self._inst.clear()
 
     # ------------------------------------------------------------------
     # Context manager
@@ -872,8 +874,6 @@ class SR760:
         # Send the all-bins query (omit bin index)
         self._send(f'SPEC? {trace}')
         line = self._readline()
-        print(line)
-        print(line.split(','))
         amplitudes = [float(v) for v in line.split(',')]
 
         # Build frequency axis from first/last bin X values
