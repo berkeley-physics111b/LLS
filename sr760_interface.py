@@ -872,6 +872,8 @@ class SR760:
         # Send the all-bins query (omit bin index)
         self._send(f'SPEC? {trace}')
         line = self._readline()
+        print(line)
+        print(line.split(','))
         amplitudes = [float(v) for v in line.split(',')]
 
         # Build frequency axis from first/last bin X values
