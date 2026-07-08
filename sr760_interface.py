@@ -329,8 +329,8 @@ class SR760:
         return self.query_int('FFTS?')
 
     def is_interface_ready(self) -> bool:
-        """Return True when the Interface Ready bit (IFC, bit 1) is set."""
-        return bool(self.get_serial_poll_byte(1))
+        """Return True when the Measurement bit (SCN, bit 0) is set."""
+        return bool(self.get_serial_poll_byte(0))
     
     def is_average_ready(self) -> bool:
         """Return True when FFT status bit indicates average is complete."""
