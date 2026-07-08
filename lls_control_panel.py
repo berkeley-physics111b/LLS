@@ -434,7 +434,8 @@ class SR760Tab(ttk.Frame):
 
         except (SR760Error, Exception) as exc:  # noqa: BLE001
             self._set_status("Error")
-            self.after(0, lambda: messagebox.showerror("SR760 Error", str(exc)))
+            err = str(exc)
+            self.after(0, lambda: messagebox.showerror("SR760 Error", err))
         finally:
             self.after(0, lambda: self.set_params_btn.configure(state="normal"))
             self.after(0, lambda: self.connect_btn.configure(state="normal"))
@@ -814,7 +815,8 @@ class SR830Tab(ttk.Frame):
 
         except (SR830Error, Exception) as exc:  # noqa: BLE001
             self._set_status("Error")
-            self.after(0, lambda: messagebox.showerror("SR830 Error", str(exc)))
+            err = str(exc)
+            self.after(0, lambda: messagebox.showerror("SR830 Error", err))
         finally:
             self.after(0, lambda: self.start_btn.configure(state="normal"))
             self.after(0, lambda: self.connect_btn.configure(state="normal"))
@@ -876,7 +878,8 @@ class SR830Tab(ttk.Frame):
                 for i, v in enumerate(data):
                     writer.writerow([i, v])
         except OSError as exc:
-            self.after(0, lambda: messagebox.showerror("Save Error", str(exc)))
+            err = str(exc)
+            self.after(0, lambda: messagebox.showerror("Save Error", err))
 
     def _save_analyzed(self, p):
         tc_label = p["tc_label"].replace(" ", "").replace("/", "")
@@ -889,7 +892,8 @@ class SR830Tab(ttk.Frame):
                     writer.writerow([i, s["mean"], s["std"], s["min"], s["max"], s["mad"]])
             self.after(0, lambda: messagebox.showinfo("Saved", f"Data saved with base path:\n{p['base_path']}"))
         except OSError as exc:
-            self.after(0, lambda: messagebox.showerror("Save Error", str(exc)))
+            err = str(exc)
+            self.after(0, lambda: messagebox.showerror("Save Error", err))
 
 
 # =============================================================================
