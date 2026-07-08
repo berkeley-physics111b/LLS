@@ -409,17 +409,10 @@ class SR760Tab(ttk.Frame):
             self._set_settle("Not settled")
             dev.start()
 
-            deadline = time.time() + 120.0
             if p["averaging"]:
-                while time.time() < deadline:
-                    if dev.get_fft_status(4):  # Avg complete
-                        break
-                    time.sleep(0.25)
+                dev.wait_for_ready_average(timeout=120.0)
             else:
-                while time.time() < deadline:
-                    if dev.is_interface_ready():
-                        break
-                    time.sleep(0.1)
+                dev.wait_for_ready(timeout=120.0)
             self._set_settle("Settled")
 
             self._set_status("Downloading spectrum...")

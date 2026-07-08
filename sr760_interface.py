@@ -125,7 +125,7 @@ class SR760:
         # manual's "EOC") - no CR/LF should be used. Responses terminated
         # with LF. (This is for GPIB.)
         self._inst.write_termination = ''
-        self._inst.read_termination = '\n'
+        self._inst.read_termination = ''
 
         # Clear queue in case unfinished commands from last session, etc.
         self._inst.clear()
@@ -331,6 +331,10 @@ class SR760:
     def is_interface_ready(self) -> bool:
         """Return True when the Interface Ready bit (IFC, bit 1) is set."""
         return bool(self.get_serial_poll_byte(1))
+    
+    def is_average_ready(self) -> bool:
+        """Return True when FFT status bit indicates average is complete."""
+        return bool(self.get_fft_status(bit=4))
 
     def wait_for_ready(self, timeout: float = 30.0, poll_interval: float = 0.1):
         """
@@ -344,6 +348,19 @@ class SR760:
                 return
             time.sleep(poll_interval)
         raise SR760Error("Timed out waiting for SR760 Interface Ready bit")
+    
+    def wait_for_ready_average(self, timeout: float = 30.0, poll_interval: float = 0.25):
+        """
+        Poll the FFT Average bit until it is set or *timeout* seconds elapse.
+
+        Raises SR760Error on timeout.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.is_average_ready():
+                return
+            time.sleep(poll_interval)
+        raise SR760Error("Timed out waiting for SR760 FFT Average Complete bit")
 
     def check_errors(self):
         """
