@@ -533,6 +533,7 @@ class SR760Tab(ttk.Frame):
             self.dev = SR760(gpib_address=addr)
             self.dev.configure_gpib()
             self.dev.reset()
+            self.dev.clear_status()
             self.dev.set_local(1)  # REMOTE
             self.dev.auto_offset(mode = 0) # turn off auto offset
             idn = self.dev.identify()

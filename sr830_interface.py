@@ -66,6 +66,12 @@ SAMPLE_RATE_VALUES = {
     12: '256 Hz',   13: '512 Hz',  14: 'Trigger',
 }
 
+# ---------------------------------------------------------------------------
+# Filter rate index → value string  (OFSL command, manual §5)
+# ---------------------------------------------------------------------------
+FILTER_SLOPE_VALUES = {
+    0:  '6 dB/oct', 1:  '12 dB/oct', 2:  '18 dB/oct', 3:  '24 dB/oct'
+}
 
 class SR830Error(Exception):
     """Raised when the SR830 reports a remote programming error."""
