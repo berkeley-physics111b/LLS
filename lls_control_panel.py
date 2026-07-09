@@ -414,10 +414,9 @@ class SR760Tab(ttk.Frame):
             #dev.wait_for_ready()
             dev.check_errors()
 
-            if p["averaging"]:
-                dev.wait_for_ready_average()
-            else:
-                dev.wait_for_ready_settling()
+            dev.wait_for_ready_settling()
+            #if p["averaging"]:
+            #    dev.wait_for_ready_average()
 
             self._set_settle("Settled")
 
