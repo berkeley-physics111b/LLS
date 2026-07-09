@@ -201,7 +201,7 @@ class SR760Tab(ttk.Frame):
 
         self.calibrate_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            adv, text="Calibrate Offset (~15 s, before data run)",
+            adv, text="Calibrate Offset (~15 s, after data run)",
             variable=self.calibrate_var,
         ).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=3)
 
@@ -414,9 +414,10 @@ class SR760Tab(ttk.Frame):
             #dev.wait_for_ready()
             dev.check_errors()
 
-            dev.wait_for_ready_settling()
             if p["averaging"]:
                 dev.wait_for_ready_average()
+            else:
+                dev.wait_for_ready_settling()
 
             self._set_settle("Settled")
 
@@ -436,7 +437,7 @@ class SR760Tab(ttk.Frame):
             if p["calibrate"]:
                 self._set_status("Calibrating offset - please wait")
                 dev.auto_offset(mode=1)
-                time.sleep(10)
+                time.sleep(15)
             else:
                 dev.auto_offset(mode=0)
             self._set_status("Done")
