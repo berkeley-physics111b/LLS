@@ -268,7 +268,70 @@ class SR760Tab(ttk.Frame):
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
+        # ---- Draggable readout cursor ----------------------------------
+        cursor_frame = ttk.Frame(right)
+        cursor_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        ttk.Label(cursor_frame, text="Cursor:").pack(side="left", padx=(4, 4))
+        self.cursor_var = tk.StringVar(value="Click and drag on the plot to read values")
+        ttk.Label(cursor_frame, textvariable=self.cursor_var, foreground="darkblue").pack(
+            side="left"
+        )
+
+        # Artists for the draggable cursor (created lazily the first time
+        # data is plotted / clicked on).
+        self._cursor_vline = None
+        self._cursor_marker = None
+        self._cursor_dragging = False
+
+        self.canvas.mpl_connect("button_press_event", self._on_cursor_press)
+        self.canvas.mpl_connect("motion_notify_event", self._on_cursor_drag)
+        self.canvas.mpl_connect("button_release_event", self._on_cursor_release)
+
         self._toggle_avg_controls()
+
+    # ------------------------------------------------------------------
+    # Draggable cursor on the FFT plot
+    # ------------------------------------------------------------------
+    def _on_cursor_press(self, event):
+        if event.inaxes != self.ax or event.button != 1:
+            return
+        self._cursor_dragging = True
+        self._update_cursor(event.xdata)
+
+    def _on_cursor_drag(self, event):
+        if not self._cursor_dragging or event.inaxes != self.ax:
+            return
+        self._update_cursor(event.xdata)
+
+    def _on_cursor_release(self, event):
+        self._cursor_dragging = False
+
+    def _update_cursor(self, x_click):
+        """Snap the cursor to the nearest measured point and show its
+        frequency/power values."""
+        if x_click is None or not self._last_freqs:
+            return
+
+        freqs, amps = self._last_freqs, self._last_amps
+        idx = min(range(len(freqs)), key=lambda i: abs(freqs[i] - x_click))
+        fx, fy = freqs[idx], amps[idx]
+
+        if self._cursor_vline is None or self._cursor_vline not in self.ax.lines:
+            self._cursor_vline = self.ax.axvline(
+                fx, color="red", linewidth=0.8, linestyle="--"
+            )
+        else:
+            self._cursor_vline.set_xdata([fx, fx])
+
+        if self._cursor_marker is None or self._cursor_marker not in self.ax.lines:
+            (self._cursor_marker,) = self.ax.plot(
+                [fx], [fy], marker="o", color="red", markersize=6, linestyle="None"
+            )
+        else:
+            self._cursor_marker.set_data([fx], [fy])
+
+        self.cursor_var.set(f"Frequency = {fmt_hz(fx)}   Power = {fy:.4g} dBV")
+        self.canvas.draw_idle()
 
     # ------------------------------------------------------------------
     def _toggle_avg_controls(self):
@@ -457,6 +520,12 @@ class SR760Tab(ttk.Frame):
 
     def _plot_data(self, freqs, amps):
         self.ax.clear()
+        # ax.clear() removes every artist, including any previous cursor
+        # line/marker -- drop our references so they get recreated fresh.
+        self._cursor_vline = None
+        self._cursor_marker = None
+        self.cursor_var.set("Click and drag on the plot to read values")
+
         self.ax.plot(freqs, amps, color="tab:blue", linewidth=1)
         self.ax.set_xlabel("Frequency (Hz)")
         self.ax.set_ylabel("Log Magnitude (dBV)")
