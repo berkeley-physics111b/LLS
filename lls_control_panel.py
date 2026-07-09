@@ -411,7 +411,7 @@ class SR760Tab(ttk.Frame):
             else:
                 dev.set_start_frequency(p["freq_val"])
             
-            #dev.wait_for_ready()
+            dev.wait_for_ready()
             dev.check_errors()
 
             dev.wait_for_ready_settling()

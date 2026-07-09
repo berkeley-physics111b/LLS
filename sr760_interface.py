@@ -347,6 +347,7 @@ class SR760:
         Raises SR760Error on timeout.
         """
         deadline = time.time() + timeout
+        self.clear_status()
         while time.time() < deadline:
             if self.is_interface_ready():
                 return
@@ -361,6 +362,7 @@ class SR760:
         Raises SR760Error on timeout.
         """
         deadline = time.time() + timeout
+        self.clear_status()
         while time.time() < deadline:
             if self.is_average_ready():
                 return
