@@ -125,7 +125,7 @@ class SR760:
         # manual's "EOC") - no CR/LF should be used. Responses terminated
         # with LF. (This is for GPIB.)
         self._inst.write_termination = ''
-        self._inst.read_termination = ''
+        self._inst.read_termination = '\n'
 
         # Clear queue in case unfinished commands from last session, etc.
         self._inst.clear()

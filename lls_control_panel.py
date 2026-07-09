@@ -44,7 +44,155 @@ from sr830_interface import (
     SR830Error,
     TIME_CONSTANT_VALUES,
     SAMPLE_RATE_VALUES,
+    SENSITIVITY_VALUES,
+    FILTER_SLOPE_VALUES,
 )
+
+
+# =============================================================================
+# Color scheme -- dark, colorblind-friendly
+# =============================================================================
+# Built around the Okabe-Ito palette (a standard 8-color palette that stays
+# distinguishable under the common forms of color-vision deficiency), laid
+# over a dark UI so it's easier on the eyes for long lab sessions too.
+COLORS = {
+    "bg":          "#1e1f26",  # window / frame background
+    "bg_panel":    "#262832",  # LabelFrame / notebook body background
+    "bg_field":    "#32343f",  # entry / combobox / spinbox field background
+    "bg_trough":   "#2a2c36",  # progressbar trough, tab strip background
+    "fg":          "#e8e8ec",  # primary text
+    "fg_muted":    "#9a9dab",  # secondary / unselected text
+    "border":      "#454857",
+    "accent":      "#56B4E9",  # sky blue     -- selected tab, focus, links
+    "accent_dark": "#0072B2",  # blue         -- buttons / hover
+    "success":     "#009E73",  # bluish green -- averages / good status
+    "warning":     "#E69F00",  # orange       -- min/max, cautions
+    "error":       "#D55E00",  # vermillion   -- cursor readout, errors
+    "select":      "#CC79A7",  # reddish purple -- secondary accent
+    "plot_bg":     "#20222b",
+    "plot_grid":   "#3c3f4c",
+    "tab_text_selected": "#12141a",
+}
+
+
+def apply_dark_theme(root: tk.Tk) -> ttk.Style:
+    """
+    Apply a dark, colorblind-friendly ttk theme to the whole application,
+    including a notebook tab bar styled so the active/inactive tabs (and the
+    fact that there are two of them) are obvious at a glance.
+    """
+    c = COLORS
+    style = ttk.Style(root)
+    # 'clam' is the ttk theme most amenable to full color customization
+    # (the native Windows/aqua themes largely ignore these options).
+    try:
+        style.theme_use("clam")
+    except tk.TclError:
+        pass
+
+    root.configure(bg=c["bg"])
+
+    style.configure(
+        ".", background=c["bg"], foreground=c["fg"],
+        fieldbackground=c["bg_field"], bordercolor=c["border"],
+        darkcolor=c["bg_panel"], lightcolor=c["bg_panel"],
+        troughcolor=c["bg_trough"], focuscolor=c["accent"],
+    )
+
+    style.configure("TFrame", background=c["bg"])
+    style.configure("TLabel", background=c["bg"], foreground=c["fg"])
+    style.configure(
+        "TLabelframe", background=c["bg"], foreground=c["fg"], bordercolor=c["border"]
+    )
+    style.configure(
+        "TLabelframe.Label", background=c["bg"], foreground=c["accent"],
+        font=("TkDefaultFont", 9, "bold"),
+    )
+
+    style.configure(
+        "TButton", background=c["bg_field"], foreground=c["fg"],
+        bordercolor=c["border"], focuscolor=c["accent"], padding=4,
+    )
+    style.map(
+        "TButton",
+        background=[("disabled", c["bg_panel"]), ("pressed", c["accent_dark"]),
+                    ("active", c["accent_dark"])],
+        foreground=[("disabled", c["fg_muted"])],
+    )
+
+    style.configure("TCheckbutton", background=c["bg"], foreground=c["fg"])
+    style.map(
+        "TCheckbutton",
+        background=[("active", c["bg"])],
+        indicatorcolor=[("selected", c["accent"]), ("!selected", c["bg_field"])],
+    )
+
+    style.configure(
+        "TEntry", fieldbackground=c["bg_field"], foreground=c["fg"],
+        insertcolor=c["fg"], bordercolor=c["border"],
+    )
+    style.map("TEntry", fieldbackground=[("disabled", c["bg_panel"])])
+
+    style.configure(
+        "TSpinbox", fieldbackground=c["bg_field"], foreground=c["fg"],
+        arrowcolor=c["fg"], bordercolor=c["border"], insertcolor=c["fg"],
+    )
+    style.map("TSpinbox", fieldbackground=[("disabled", c["bg_panel"])])
+
+    style.configure(
+        "TCombobox", fieldbackground=c["bg_field"], foreground=c["fg"],
+        background=c["bg_field"], arrowcolor=c["fg"], bordercolor=c["border"],
+    )
+    style.map(
+        "TCombobox",
+        fieldbackground=[("readonly", c["bg_field"]), ("disabled", c["bg_panel"])],
+        foreground=[("disabled", c["fg_muted"])],
+        selectbackground=[("readonly", c["bg_field"])],
+        selectforeground=[("readonly", c["fg"])],
+    )
+    # The combobox popdown list is a plain Tk Listbox, styled separately.
+    root.option_add("*TCombobox*Listbox.background", c["bg_field"])
+    root.option_add("*TCombobox*Listbox.foreground", c["fg"])
+    root.option_add("*TCombobox*Listbox.selectBackground", c["accent"])
+    root.option_add("*TCombobox*Listbox.selectForeground", c["tab_text_selected"])
+
+    style.configure(
+        "TProgressbar", background=c["accent"], troughcolor=c["bg_trough"],
+        bordercolor=c["border"],
+    )
+
+    # ---- Notebook / tab bar --------------------------------------------
+    # Strong contrast + bold text on the selected tab makes it obvious
+    # which of the two tabs is active, and that there IS more than one.
+    style.configure("TNotebook", background=c["bg"], bordercolor=c["border"])
+    style.configure(
+        "TNotebook.Tab", background=c["bg_trough"], foreground=c["fg_muted"],
+        padding=(18, 9), font=("TkDefaultFont", 10),
+    )
+    style.map(
+        "TNotebook.Tab",
+        background=[("selected", c["accent"]), ("active", c["bg_field"])],
+        foreground=[("selected", c["tab_text_selected"]), ("active", c["fg"])],
+        font=[("selected", ("TkDefaultFont", 10, "bold"))],
+        expand=[("selected", (2, 2, 2, 0))],
+    )
+
+    return style
+
+
+def style_dark_axes(fig: "Figure", ax) -> None:
+    """Apply the dark/colorblind-friendly palette to a matplotlib Axes.
+    Call again after ax.clear(), since clear() resets rcParams-derived styling."""
+    c = COLORS
+    fig.patch.set_facecolor(c["bg_panel"])
+    ax.set_facecolor(c["plot_bg"])
+    ax.tick_params(colors=c["fg_muted"])
+    for spine in ax.spines.values():
+        spine.set_color(c["border"])
+    ax.xaxis.label.set_color(c["fg"])
+    ax.yaxis.label.set_color(c["fg"])
+    ax.title.set_color(c["fg"])
+    ax.grid(True, alpha=0.35, color=c["plot_grid"])
 
 
 # =============================================================================
@@ -238,7 +386,7 @@ class SR760Tab(ttk.Frame):
         status.pack(fill="x", pady=4)
         ttk.Label(status, text="Status:").grid(row=0, column=0, sticky="w", padx=6, pady=3)
         self.status_var = tk.StringVar(value="Not connected")
-        ttk.Label(status, textvariable=self.status_var, foreground="blue").grid(
+        ttk.Label(status, textvariable=self.status_var, foreground=COLORS["accent"]).grid(
             row=0, column=1, sticky="w", padx=6, pady=3
         )
         ttk.Label(status, text="Operating Mode:").grid(row=1, column=0, sticky="w", padx=6, pady=3)
@@ -264,8 +412,9 @@ class SR760Tab(ttk.Frame):
         self.ax = self.fig.add_subplot(111)
         self.ax.set_xlabel("Frequency (Hz)")
         self.ax.set_ylabel("Amplitude (dBV)")
-        self.ax.grid(True, alpha=0.3)
+        style_dark_axes(self.fig, self.ax)
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
+        self.canvas.get_tk_widget().configure(bg=COLORS["bg_panel"], highlightthickness=0)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
         # ---- Draggable readout cursor ----------------------------------
@@ -273,7 +422,7 @@ class SR760Tab(ttk.Frame):
         cursor_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         ttk.Label(cursor_frame, text="Cursor:").pack(side="left", padx=(4, 4))
         self.cursor_var = tk.StringVar(value="Click and drag on the plot to read values")
-        ttk.Label(cursor_frame, textvariable=self.cursor_var, foreground="darkblue").pack(
+        ttk.Label(cursor_frame, textvariable=self.cursor_var, foreground=COLORS["accent"]).pack(
             side="left"
         )
 
@@ -318,14 +467,14 @@ class SR760Tab(ttk.Frame):
 
         if self._cursor_vline is None or self._cursor_vline not in self.ax.lines:
             self._cursor_vline = self.ax.axvline(
-                fx, color="red", linewidth=0.8, linestyle="--"
+                fx, color=COLORS["error"], linewidth=0.8, linestyle="--"
             )
         else:
             self._cursor_vline.set_xdata([fx, fx])
 
         if self._cursor_marker is None or self._cursor_marker not in self.ax.lines:
             (self._cursor_marker,) = self.ax.plot(
-                [fx], [fy], marker="o", color="red", markersize=6, linestyle="None"
+                [fx], [fy], marker="o", color=COLORS["error"], markersize=6, linestyle="None"
             )
         else:
             self._cursor_marker.set_data([fx], [fy])
@@ -526,10 +675,10 @@ class SR760Tab(ttk.Frame):
         self._cursor_marker = None
         self.cursor_var.set("Click and drag on the plot to read values")
 
-        self.ax.plot(freqs, amps, color="tab:blue", linewidth=1)
+        self.ax.plot(freqs, amps, color=COLORS["accent"], linewidth=1)
         self.ax.set_xlabel("Frequency (Hz)")
         self.ax.set_ylabel("Log Magnitude (dBV)")
-        self.ax.grid(True, alpha=0.3)
+        style_dark_axes(self.fig, self.ax)
         self.canvas.draw()
 
     def _prompt_save(self):
@@ -629,6 +778,20 @@ class SR830Tab(ttk.Frame):
         self.points_var = tk.StringVar(value="--")
         ttk.Label(acq, textvariable=self.points_var).grid(row=5, column=1, sticky="w", padx=6, pady=3)
 
+        ttk.Label(acq, text="Sensitivity:").grid(row=6, column=0, sticky="w", padx=6, pady=3)
+        self.sensitivity_var = tk.StringVar(value=SENSITIVITY_VALUES[20])  # 10 mV/nA
+        ttk.Combobox(
+            acq, textvariable=self.sensitivity_var, state="readonly", width=14,
+            values=list(SENSITIVITY_VALUES.values()),
+        ).grid(row=6, column=1, sticky="w", padx=6, pady=3)
+
+        ttk.Label(acq, text="Filter Slope:").grid(row=7, column=0, sticky="w", padx=6, pady=3)
+        self.filter_slope_var = tk.StringVar(value=FILTER_SLOPE_VALUES[1])  # 12 dB/oct
+        ttk.Combobox(
+            acq, textvariable=self.filter_slope_var, state="readonly", width=14,
+            values=list(FILTER_SLOPE_VALUES.values()),
+        ).grid(row=7, column=1, sticky="w", padx=6, pady=3)
+
         # ---- Data Run and Save Options --------------------------------------
         run_frame = ttk.LabelFrame(left, text="Data Run and Save Options")
         run_frame.pack(fill="x", pady=4)
@@ -661,6 +824,27 @@ class SR830Tab(ttk.Frame):
         self.browse_btn = ttk.Button(path_row, text="Browse...", command=self._browse_base_path)
         self.browse_btn.pack(side="left", padx=4)
 
+        # ---- Mid-run checkpoint autosave ------------------------------------
+        # Safeguard for long/overnight single runs: periodically flush
+        # whatever has been acquired so far to disk, so a crash or power
+        # loss loses at most one checkpoint interval, not the whole run.
+        self.checkpoint_var = tk.BooleanVar(value=True)
+        self.checkpoint_check = ttk.Checkbutton(
+            run_frame, text="Mid-run checkpoint autosave", variable=self.checkpoint_var,
+            command=self._toggle_save_controls,
+        )
+        self.checkpoint_check.grid(row=4, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
+
+        ttk.Label(run_frame, text="Checkpoint every:").grid(row=5, column=0, sticky="w", padx=6, pady=3)
+        checkpoint_row = ttk.Frame(run_frame)
+        checkpoint_row.grid(row=5, column=1, sticky="w", padx=6, pady=3)
+        self.checkpoint_interval_var = tk.StringVar(value="10")
+        self.checkpoint_interval_spin = ttk.Spinbox(
+            checkpoint_row, from_=1, to=180, width=5, textvariable=self.checkpoint_interval_var,
+        )
+        self.checkpoint_interval_spin.pack(side="left")
+        ttk.Label(checkpoint_row, text="min").pack(side="left", padx=(4, 0))
+
         self.start_btn = ttk.Button(left, text="Start Run(s)", command=self._on_start, state="disabled")
         self.start_btn.pack(fill="x", pady=8)
 
@@ -669,7 +853,7 @@ class SR830Tab(ttk.Frame):
         status.pack(fill="x", pady=4)
         ttk.Label(status, text="Status:").grid(row=0, column=0, sticky="w", padx=6, pady=3)
         self.status_var = tk.StringVar(value="Not connected")
-        ttk.Label(status, textvariable=self.status_var, foreground="blue").grid(
+        ttk.Label(status, textvariable=self.status_var, foreground=COLORS["accent"]).grid(
             row=0, column=1, sticky="w", padx=6, pady=3
         )
         self.progress = ttk.Progressbar(status, orient="horizontal", mode="determinate", length=200)
@@ -695,8 +879,9 @@ class SR830Tab(ttk.Frame):
         self.ax = self.fig.add_subplot(111)
         self.ax.set_xlabel("Data Point Number")
         self.ax.set_ylabel("Volts")
-        self.ax.grid(True, alpha=0.3)
+        style_dark_axes(self.fig, self.ax)
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
+        self.canvas.get_tk_widget().configure(bg=COLORS["bg_panel"], highlightthickness=0)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
         # ---- Draggable readout cursor ----------------------------------
@@ -704,7 +889,7 @@ class SR830Tab(ttk.Frame):
         cursor_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         ttk.Label(cursor_frame, text="Cursor:").pack(side="left", padx=(4, 4))
         self.cursor_var = tk.StringVar(value="Click and drag on the plot to read values")
-        ttk.Label(cursor_frame, textvariable=self.cursor_var, foreground="darkblue").pack(
+        ttk.Label(cursor_frame, textvariable=self.cursor_var, foreground=COLORS["accent"]).pack(
             side="left"
         )
 
@@ -749,14 +934,14 @@ class SR830Tab(ttk.Frame):
 
         if self._cursor_vline is None or self._cursor_vline not in self.ax.lines:
             self._cursor_vline = self.ax.axvline(
-                fx, color="red", linewidth=0.8, linestyle="--"
+                fx, color=COLORS["error"], linewidth=0.8, linestyle="--"
             )
         else:
             self._cursor_vline.set_xdata([fx, fx])
 
         if self._cursor_marker is None or self._cursor_marker not in self.ax.lines:
             (self._cursor_marker,) = self.ax.plot(
-                [fx], [fy], marker="o", color="red", markersize=6, linestyle="None"
+                [fx], [fy], marker="o", color=COLORS["error"], markersize=6, linestyle="None"
             )
         else:
             self._cursor_marker.set_data([fx], [fy])
@@ -779,6 +964,9 @@ class SR830Tab(ttk.Frame):
         self.save_to_combo.configure(state=combo_state)
         self.base_path_entry.configure(state=state)
         self.browse_btn.configure(state=state)
+        self.checkpoint_check.configure(state=state)
+        checkpoint_state = "normal" if (self.save_var.get() and self.checkpoint_var.get()) else "disabled"
+        self.checkpoint_interval_spin.configure(state=checkpoint_state)
 
     def _browse_base_path(self):
         path = filedialog.asksaveasfilename(
@@ -843,6 +1031,7 @@ class SR830Tab(ttk.Frame):
             self.dev = SR830(gpib_address=addr)
             self.dev.configure_gpib()
             self.dev.reset()
+            self.dev.set_local(1) # Remote
             idn = self.dev.identify()
             self.status_var.set(f"Connected: {idn}")
             self.connect_btn.configure(text="Disconnect")
@@ -855,6 +1044,7 @@ class SR830Tab(ttk.Frame):
     def _disconnect(self):
         if self.dev is not None:
             try:
+                self.dev.set_local(0) # Local
                 self.dev.close()
             except Exception:
                 pass
@@ -885,8 +1075,26 @@ class SR830Tab(ttk.Frame):
             if v == self.tc_var.get():
                 tc_idx = i
                 break
-        if rate_idx is None or tc_idx is None:
-            messagebox.showerror("Invalid Value", "Select a valid time constant / sample rate.")
+        sensitivity_idx = None
+        for i, v in SENSITIVITY_VALUES.items():
+            if v == self.sensitivity_var.get():
+                sensitivity_idx = i
+                break
+        filter_slope_idx = None
+        for i, v in FILTER_SLOPE_VALUES.items():
+            if v == self.filter_slope_var.get():
+                filter_slope_idx = i
+                break
+        if rate_idx is None or tc_idx is None or sensitivity_idx is None or filter_slope_idx is None:
+            messagebox.showerror(
+                "Invalid Value",
+                "Select a valid time constant / sample rate / sensitivity / filter slope.",
+            )
+            return
+        
+        points_per_run = int(span_s * rate_idx)
+        if points_per_run > self.dev.MAX_BUFFER_POINTS:
+            messagebox.showerror("Invalid Value", "Points per run greater than buffer size; data will be overwritten.")
             return
 
         save = self.save_var.get()
@@ -898,15 +1106,29 @@ class SR830Tab(ttk.Frame):
             # "if more than one run is to be performed, the data will automatically be saved"
             self.save_var.set(True)
 
+        checkpoint_enabled = save and self.checkpoint_var.get()
+        checkpoint_interval_s = 0.0
+        if checkpoint_enabled:
+            try:
+                checkpoint_interval_s = float(self.checkpoint_interval_var.get()) * 60.0
+                if checkpoint_interval_s <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Invalid Value", "Checkpoint interval must be a positive number of minutes.")
+                return
+
         self.start_btn.configure(state="disabled")
         self.connect_btn.configure(state="disabled")
         self._run_stats = []
 
         params = dict(
-            num_runs=num_runs, span_s=span_s, rate_idx=rate_idx, tc_idx=tc_idx,
+            num_runs=num_runs, span_s=span_s, rate_idx=rate_idx, points_per_run=points_per_run, 
+            tc_idx=tc_idx,
+            sensitivity=sensitivity_idx, filter_slope=filter_slope_idx,
             save=save, base_path=base_path,
             multi_file=(self.save_to_var.get() == self.SAVE_TO_OPTIONS[1]),
             tc_label=self.tc_var.get(),
+            checkpoint_enabled=checkpoint_enabled, checkpoint_interval_s=checkpoint_interval_s,
         )
         self._worker = threading.Thread(target=self._run_all, args=(params,), daemon=True)
         self._worker.start()
@@ -914,32 +1136,64 @@ class SR830Tab(ttk.Frame):
     def _run_all(self, p):
         try:
             dev = self.dev
+            dev.pause_scan()
+            dev.set_end_of_buffer_mode(0)
+            dev.reset_scan()
+
             dev.set_sample_rate(p["rate_idx"])
             dev.set_time_constant(p["tc_idx"])
+            dev.set_sensitivity(p["sensitivity"])
+            dev.set_filter_slope(p["filter_slope"])
+            dev.set_display(channel=1, display=0, ratio=0) # display X on ch. 1
+            dev.set_display(channel=2, display=1, ratio=0) # display θ on ch. 2
 
+            dev.check_errors()
+            
             all_runs_data = []
             for run_idx in range(1, p["num_runs"] + 1):
                 self._set_status(f"Run {run_idx}/{p['num_runs']}: acquiring...")
                 self._set_progress(0)
 
                 dev.set_end_of_buffer_mode(0)  # 1 Shot
+                dev.pause_scan()
                 dev.reset_scan()
                 dev.start_scan()
 
-                start_t = time.time()
-                while True:
-                    elapsed = time.time() - start_t
-                    pct = min(100, int(100 * elapsed / p["span_s"])) if p["span_s"] > 0 else 100
+                # Poll SPTS? until the requested number of points has been
+                # stored. get_num_stored_points() is safe to call during
+                # active storage (manual §5), so we also use this loop to
+                # opportunistically flush partial data to disk -- our
+                # crash-safety net for long/overnight runs.
+                last_checkpoint = time.time()
+                n_points = dev.get_num_stored_points()
+                while n_points < p["points_per_run"]:
+                    pct = min(100, n_points / p["points_per_run"]) if p["points_per_run"] > 0 else 100
                     self._set_progress(pct)
-                    if elapsed >= p["span_s"]:
-                        break
-                    time.sleep(0.1)
+
+                    if (p["checkpoint_enabled"] and n_points > 0
+                            and (time.time() - last_checkpoint) >= p["checkpoint_interval_s"]):
+                        try:
+                            partial = dev.get_trace_ascii(1, 0, n_points)
+                            self._save_checkpoint(p, run_idx, partial)
+                            self._set_status(
+                                f"Run {run_idx}/{p['num_runs']}: acquiring... "
+                                f"(checkpoint saved at {n_points} pts)"
+                            )
+                        except Exception:
+                            pass  # a checkpoint write failure should never abort a live run
+                        last_checkpoint = time.time()
+
+                    time.sleep(0.25)
+                    n_points = dev.get_num_stored_points()
+
                 dev.pause_scan()
 
                 self._set_status(f"Run {run_idx}/{p['num_runs']}: downloading...")
-                n_points = dev.get_num_stored_points()
                 data = dev.get_trace_ascii(1, 0, n_points) if n_points > 0 else []
                 all_runs_data.append(data)
+
+                dev.reset_scan()
+                dev.start_scan()
 
                 stats = self._compute_stats(data)
                 self._run_stats.append(stats)
@@ -948,9 +1202,18 @@ class SR830Tab(ttk.Frame):
 
                 if p["save"] and data:
                     self._save_run(p, run_idx, data)
+                    if p["checkpoint_enabled"]:
+                        # Run finished and was saved for real -- the interim
+                        # checkpoint file for this run is no longer needed.
+                        try:
+                            os.remove(self._checkpoint_path(p, run_idx))
+                        except OSError:
+                            pass
 
             if p["save"] and self._run_stats:
                 self._save_analyzed(p)
+            
+            dev.check_errors() # Don't interrupt runs, but do alert user to potential problems
 
             self._set_status("Done")
             self._set_progress(100)
@@ -992,14 +1255,15 @@ class SR830Tab(ttk.Frame):
 
         if data:
             x = list(range(len(data)))
-            self.ax.plot(x, data, color="cyan", linewidth=0.8, label="Raw data")
-            self.ax.axhline(stats["mean"], color="green", linewidth=1.2, label="Average")
-            self.ax.axhline(stats["min"], color="darkblue", linestyle="--", linewidth=1, label="Min/Max")
-            self.ax.axhline(stats["max"], color="darkblue", linestyle="--", linewidth=1)
-            self.ax.legend(loc="upper right", fontsize=8)
+            self.ax.plot(x, data, color=COLORS["accent"], linewidth=0.8, label="Raw data")
+            self.ax.axhline(stats["mean"], color=COLORS["success"], linewidth=1.2, label="Average")
+            self.ax.axhline(stats["min"], color=COLORS["warning"], linestyle="--", linewidth=1, label="Min/Max")
+            self.ax.axhline(stats["max"], color=COLORS["warning"], linestyle="--", linewidth=1)
+            legend = self.ax.legend(loc="upper right", fontsize=8, facecolor=COLORS["bg_panel"],
+                                     edgecolor=COLORS["border"], labelcolor=COLORS["fg"])
         self.ax.set_xlabel("Data Point Number")
         self.ax.set_ylabel("Volts")
-        self.ax.grid(True, alpha=0.3)
+        style_dark_axes(self.fig, self.ax)
         self.canvas.draw()
 
     def _set_status(self, text):
@@ -1009,6 +1273,36 @@ class SR830Tab(ttk.Frame):
         self.after(0, self.progress.configure, {"value": pct})
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _checkpoint_path(p, run_idx):
+        """Fixed filename for a run's checkpoint file, so repeated
+        checkpoint writes overwrite in place instead of piling up files."""
+        tc_label = p["tc_label"].replace(" ", "").replace("/", "")
+        return f"{p['base_path']} (T={tc_label} Run{run_idx} CHECKPOINT).xls"
+
+    def _save_checkpoint(self, p, run_idx, data):
+        """Write whatever has been acquired so far for the current run to
+        a checkpoint file (overwritten on every call). Best-effort: a
+        failure here must never interrupt the live acquisition."""
+        path = self._checkpoint_path(p, run_idx)
+        try:
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f, delimiter="\t")
+                writer.writerow([
+                    f"-- Checkpoint: Run {run_idx}, {len(data)} of "
+                    f"{p['points_per_run']} points, "
+                    f"{time.strftime('%Y-%m-%d %H:%M:%S')} --"
+                ])
+                writer.writerow(["Point #", "R (V)"])
+                for i, v in enumerate(data):
+                    writer.writerow([i, v])
+        except OSError as exc:
+            err = str(exc)
+            self.after(0, lambda: messagebox.showwarning(
+                "Checkpoint Save Warning",
+                f"Could not write checkpoint file (run continues):\n{err}",
+            ))
+
     def _save_run(self, p, run_idx, data):
         tc_label = p["tc_label"].replace(" ", "").replace("/", "")
         if p["multi_file"]:
@@ -1055,6 +1349,8 @@ class App(tk.Tk):
         self.title("LLS Control Panel")
         self.geometry("1150x720")
         self.minsize(950, 600)
+
+        apply_dark_theme(self)
 
         notebook = ttk.Notebook(self)
         notebook.pack(fill="both", expand=True, padx=6, pady=6)
