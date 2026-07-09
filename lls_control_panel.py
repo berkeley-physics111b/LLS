@@ -1192,6 +1192,7 @@ class SR830Tab(ttk.Frame):
                 all_runs_data.append(data)
 
                 dev.reset_scan()
+                dev.clear_status() # if error in run, should not affect future run attempts
                 dev.start_scan()
 
                 stats = self._compute_stats(data)
