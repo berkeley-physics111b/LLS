@@ -320,7 +320,9 @@ class SR760Tab(ttk.Frame):
         try:
             self.dev = SR760(gpib_address=addr)
             self.dev.configure_gpib()
+            self.dev.reset()
             self.dev.set_local(1)  # REMOTE
+            self.dev.auto_offset(mode = 0) # turn off auto offset
             idn = self.dev.identify()
             self.status_var.set(f"Connected: {idn}")
             self.mode_var.set("Remote")
@@ -335,6 +337,8 @@ class SR760Tab(ttk.Frame):
     def _disconnect(self):
         if self.dev is not None:
             try:
+                if self.calibrate_var.get():
+                    self.dev.auto_offset(mode = 1)
                 self.dev.set_local(0)  # back to LOCAL
                 self.dev.close()
             except Exception:
@@ -379,22 +383,13 @@ class SR760Tab(ttk.Frame):
     def _run_acquisition(self, p):
         try:
             dev = self.dev
+            dev.start()
             self._set_status("Configuring FFT...")
             dev.set_measurement(p["trace"], p["meas_type"])
             dev.set_display(p["trace"], 0)   # Log Magnitude
             dev.set_units(p["trace"], 2)     # dBV
             dev.set_window(p["trace"], p["window"])
-            dev.set_span_hz(p["span_hz"])
-            if p["span_from_center"]:
-                dev.set_center_frequency(p["freq_val"])
-            else:
-                dev.set_start_frequency(p["freq_val"])
             dev.set_active_trace(p["trace"])
-
-            if p["calibrate"]:
-                self._set_status("Calibrating offset (~15 s)... do not operate instrument")
-                dev.write("CALO")
-                time.sleep(15)
 
             if p["averaging"]:
                 self._set_status("Configuring averaging...")
@@ -404,18 +399,31 @@ class SR760Tab(ttk.Frame):
                 dev.set_averaging_mode(0)  # Linear
             else:
                 dev.set_averaging(False)
-
-            self._set_status("Acquiring...")
+            time.sleep(0.5)
             self._set_settle("Not settled")
-            dev.start()
 
-            #if p["averaging"]:
-            #    dev.wait_for_ready_average(timeout=120.0)
-            #else:
-            #    dev.wait_for_ready(timeout=120.0)
+            if dev.get_serial_poll_byte(4):
+                dev.clear_status() # does this clear queue...? i don't think so
+            dev.set_span_hz(p["span_hz"])
+            # depending on type, query and display third value? not strictly necessary
+            if p["span_from_center"]:
+                dev.set_center_frequency(p["freq_val"])
+            else:
+                dev.set_start_frequency(p["freq_val"])
+            
+            dev.wait_for_ready()
+            dev.check_errors()
+
+            dev.wait_for_ready_settling()
+            if p["averaging"]:
+                dev.wait_for_ready_average()
+
             self._set_settle("Settled")
 
-            self._set_status("Downloading spectrum...")
+            self._set_status("Acquiring spectrum...")
+
+            # split into x and y acquisition like in labview?
+            # use of markers?
             freqs, amps = dev.get_spectrum(p["trace"])
             self._last_freqs, self._last_amps = freqs, amps
 
@@ -424,6 +432,14 @@ class SR760Tab(ttk.Frame):
 
             self._set_status("Done")
             self.after(0, self._prompt_save)
+
+            if p["calibrate"]:
+                self._set_status("Calibrating offset - please wait")
+                dev.auto_offset(mode=1)
+                time.sleep(10)
+            else:
+                dev.auto_offset(mode=0)
+            self._set_status("Done")
 
         except (SR760Error, Exception) as exc:  # noqa: BLE001
             self._set_status("Error")
@@ -443,7 +459,7 @@ class SR760Tab(ttk.Frame):
         self.ax.clear()
         self.ax.plot(freqs, amps, color="tab:blue", linewidth=1)
         self.ax.set_xlabel("Frequency (Hz)")
-        self.ax.set_ylabel("Amplitude (dBV)")
+        self.ax.set_ylabel("Log Magnitude (dBV)")
         self.ax.grid(True, alpha=0.3)
         self.canvas.draw()
 

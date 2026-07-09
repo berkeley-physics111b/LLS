@@ -329,12 +329,16 @@ class SR760:
         return self.query_int('FFTS?')
 
     def is_interface_ready(self) -> bool:
-        """Return True when the Measurement bit (SCN, bit 0) is set."""
-        return bool(self.get_serial_poll_byte(0))
+        """Return True when the Interface bit (IFC, bit 1) is set."""
+        return bool(self.get_serial_poll_byte(bit=1))
     
     def is_average_ready(self) -> bool:
         """Return True when FFT status bit indicates average is complete."""
         return bool(self.get_fft_status(bit=4))
+    
+    def is_settling_ready(self) -> bool:
+        """Return True when FFT status bit indicates data settling is complete."""
+        return bool(self.get_fft_status(bit=7))
 
     def wait_for_ready(self, timeout: float = 30.0, poll_interval: float = 0.1):
         """
@@ -359,6 +363,20 @@ class SR760:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.is_average_ready():
+                return
+            time.sleep(poll_interval)
+        raise SR760Error("Timed out waiting for SR760 FFT Average Complete bit")
+    
+    def wait_for_ready_settling(self, timeout: float = 30.0, poll_interval: float = 0.25):
+        """
+        Poll the FFT Settling bit until it is set or *timeout* seconds elapse.
+
+        Raises SR760Error on timeout.
+        """
+        deadline = time.time() + timeout
+        self.clear_status()
+        while time.time() < deadline:
+            if self.is_settling_ready():
                 return
             time.sleep(poll_interval)
         raise SR760Error("Timed out waiting for SR760 FFT Average Complete bit")
@@ -399,6 +417,18 @@ class SR760:
     def pause_continue(self):
         """STCO - Toggle pause/continue (equivalent to [PAUSE CONT] key)."""
         self.write('STCO')
+    
+    def auto_offset(self, mode: int = 1):
+        """
+        AOFM - Set auto offset calibration mode.
+
+        Parameters
+        ---------
+        mode : int
+            0 = Off
+            1 = On
+        """
+        self.write(f'AOFM {mode}')
 
     def auto_range(self, mode: int = 1):
         """
