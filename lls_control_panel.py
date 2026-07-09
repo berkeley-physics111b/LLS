@@ -50,11 +50,9 @@ from sr830_interface import (
 
 
 # =============================================================================
-# Color scheme -- dark, colorblind-friendly
+# Color scheme
 # =============================================================================
-# Built around the Okabe-Ito palette (a standard 8-color palette that stays
-# distinguishable under the common forms of color-vision deficiency), laid
-# over a dark UI so it's easier on the eyes for long lab sessions too.
+# Built around the Okabe-Ito palette
 COLORS = {
     "bg":          "#1e1f26",  # window / frame background
     "bg_panel":    "#262832",  # LabelFrame / notebook body background
