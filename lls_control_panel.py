@@ -383,7 +383,6 @@ class SR760Tab(ttk.Frame):
     def _run_acquisition(self, p):
         try:
             dev = self.dev
-            dev.start()
             self._set_status("Configuring FFT...")
             dev.set_measurement(p["trace"], p["meas_type"])
             dev.set_display(p["trace"], 0)   # Log Magnitude
@@ -411,6 +410,7 @@ class SR760Tab(ttk.Frame):
             else:
                 dev.set_start_frequency(p["freq_val"])
             
+            dev.start()
             dev.wait_for_ready()
             dev.check_errors()
 

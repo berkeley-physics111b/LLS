@@ -621,7 +621,7 @@ class SR830:
             Offset as a percentage of full scale. -105.00 ≤ x ≤ 105.00.
             Setting offset to 0 turns offset off.
         expand : int
-            0 = no expand (×1), 1 = ×10, 2 = ×100.
+            0 = no expand (x1), 1 = x10, 2 = x100.
         """
         self.write(f'OEXP {quantity},{offset_pct},{expand}')
 
@@ -632,7 +632,7 @@ class SR830:
         Returns
         -------
         (offset_percent, expand_index)
-            expand_index: 0=×1, 1=×10, 2=×100.
+            expand_index: 0=x1, 1=x10, 2=x100.
         """
         response = self.query(f'OEXP? {quantity}')
         parts = response.split(',')
