@@ -604,7 +604,8 @@ class SR760Tab(ttk.Frame):
             if p["averaging"]:
                 self._set_status("Configuring averaging...")
                 dev.set_averaging(True)
-                dev.set_num_averages(max(2, p["avg_count"]))
+                avg_count = max(2, p["avg_count"])
+                dev.set_num_averages(avg_count)
                 dev.set_averaging_type(p["avg_type"])
                 dev.set_averaging_mode(0)  # Linear
             else:
@@ -622,12 +623,13 @@ class SR760Tab(ttk.Frame):
                 dev.set_start_frequency(p["freq_val"])
             
             dev.start()
-            #dev.wait_for_ready()
+            #dev.wait_for_ready() # this line does not work/always times out
             dev.check_errors()
 
             dev.wait_for_ready_settling()
-            #if p["averaging"]:
-            #    dev.wait_for_ready_average()
+            if p["averaging"]:
+                time.sleep(0.1 * avg_count) # give it time to settle
+            #   dev.wait_for_ready_average() # this line does not work/always times out
 
             self._set_settle("Settled")
 
